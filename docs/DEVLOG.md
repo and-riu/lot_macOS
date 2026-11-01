@@ -13,7 +13,7 @@ flowchart LR
     E --> F[v3<br/>skip macOS]
     F --> G[v3.1<br/>split fast taps]
     G --> H[v3.2<br/>track each finger]
-    H --> I[00:16<br/>ship it] --> J[next day<br/>fix the mouse]
+    H --> I[00:16<br/>ship it] --> J[00:50<br/>fix the mouse]
 ```
 
 ---
@@ -178,7 +178,7 @@ When a finger lifts and has a valid partner, that's a tap: click, mark both as u
 
 ## 10 · The bug I shipped: "my mouse doesn't work"
 
-A few hours after "excellent", with the repo already up as private:
+Half an hour after "excellent", with the repo already up as private:
 
 > "I need you to turn the script off right now, my connected mouse doesn't work"
 
@@ -211,4 +211,4 @@ An external mouse only ever pays those 5 ms when you click it right after a trac
 
 ---
 
-*Built in one night (plus one morning-after fix) with [Claude Code](https://claude.com/claude-code).*
+*Built in one night (plus one emergency fix) with [Claude Code](https://claude.com/claude-code).*
