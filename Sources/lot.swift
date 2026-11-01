@@ -31,8 +31,10 @@ let lock = NSLock()
 var fingersDown = 0                    // fingers in real contact right now
 struct Touch { var start: UInt64; var sx: Float; var sy: Float; var disp: Float; var used: Bool; var haveStart: Bool }
 var active: [Int32: Touch] = [:]       // per-finger tracking, keyed by the trackpad's finger id
-var swallowUp = false
 var pendingDown: CGEvent? = nil
+var owed = 0                           // late duplicates macOS may still send for taps lot already handled
+var lastFire: UInt64 = 0
+let owedWindow: UInt64 = 1_500_000_000 // macOS's late tap-clicks arrive within ~1.1 s
 
 func sendRightClick() {
   let pos = CGEvent(source: nil)?.location ?? .zero
@@ -79,7 +81,7 @@ let mtCB: MTCallback = { _, touches, n, _, _ in
     if let (pid, pt) = active.filter({ !$0.value.used && $0.value.disp < maxMove && t - $0.value.start < maxContact }).min(by: {
          abs(Double(Int64(bitPattern: $0.value.start &- x.start))) < abs(Double(Int64(bitPattern: $1.value.start &- x.start))) }),
        abs(Double(Int64(bitPattern: pt.start &- x.start))) < Double(maxSkew) {
-      active[pid]!.used = true; fire = true
+      active[pid]!.used = true; fire = true; owed += 1; lastFire = t
       print(String(format: "two-finger tap (%.0f ms, move %.3f/%.3f, skew %.0f ms) → right click", Double(dur)/1e6, x.disp, pt.disp,
                    abs(Double(Int64(bitPattern: pt.start &- x.start)))/1e6))
     }
@@ -111,22 +113,27 @@ let cb: CGEventTapCallBack = { _, type, ev, _ in
   guard inGame else { return Unmanaged.passUnretained(ev) }
   lock.lock(); defer { lock.unlock() }
   if type == .rightMouseDown {
-    // no fingers down → this is macOS delivering a tap we already handled
-    if fingersDown == 0 { swallowUp = true; print("  dropped late macOS tap-click"); return nil }
-    // fingers down → physical click, or a late tap-click landing during the next tap?
-    // A tap-click's mouse-up follows within ~0.2 ms; a physical click's takes 100+ ms. Wait 5 ms to tell.
+    // Only a click that could be the late duplicate of a tap lot already sent is ever held back.
+    // Anything else (an external mouse, a physical trackpad click) passes straight through.
+    if owed > 0 && now() - lastFire > owedWindow { owed = 0 }
+    if owed == 0 {
+      for k in active.keys { active[k]!.used = true }   // physical trackpad click: don't also count it as a tap
+      return Unmanaged.passUnretained(ev)
+    }
+    // A duplicate's mouse-up follows within ~0.2 ms; a real click's takes 50+ ms. Hold the down 5 ms to tell.
     guard let d = ev.copy() else { return Unmanaged.passUnretained(ev) }
     d.setIntegerValueField(.eventSourceUserData, value: magic)
     pendingDown = d
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.005) {
       lock.lock(); let p = pendingDown; pendingDown = nil; if p != nil { for k in active.keys { active[k]!.used = true } }; lock.unlock()
-      p?.post(tap: .cgSessionEventTap)   // physical click: let it through
+      p?.post(tap: .cgSessionEventTap)   // real click: let it through
     }
     return nil
   }
-  if type == .rightMouseUp {
-    if pendingDown != nil { pendingDown = nil; print("  dropped late macOS tap-click (fingers down)"); return nil }
-    if swallowUp { swallowUp = false; return nil }
+  if type == .rightMouseUp, pendingDown != nil {
+    pendingDown = nil; owed -= 1          // the up came instantly: it's the duplicate → drop both
+    print("  dropped late macOS tap-click")
+    return nil
   }
   return Unmanaged.passUnretained(ev)
 }

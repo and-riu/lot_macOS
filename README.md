@@ -41,13 +41,13 @@ sequenceDiagram
     Note over L: pair of fingers, both short, both still? → it's a tap
     L->>G: right click, held 25 ms (at the moment the first finger lifts)
     M-->>L: ~370 ms later: macOS's own 0.2 ms right click (sometimes)
-    Note over L: fingers already gone → late duplicate, discarded
+    Note over L: owed a duplicate + mouse-up within 5 ms → discarded
 ```
 
 - **Reads the trackpad directly** (Apple's private `MultitouchSupport` framework, read-only) and tracks every finger by its id.
 - **A tap is a pair of fingers** that landed within 150 ms of each other, touched for under 250 ms and moved less than 4 % of the pad. Overlapping fast taps still split into the right pairs.
 - **Fires on the first finger lift** with a normal 25 ms right click at the cursor.
-- **Filters macOS's late tap clicks** so nothing doubles. **Physical clicks pass through** untouched.
+- **Filters macOS's late tap clicks** so nothing doubles. It only checks right clicks that arrive within 1.5 s of a tap lot sent, and drops them only if their mouse-up follows within 5 ms. **Physical trackpad clicks and external mice pass through** untouched.
 - **Only active while the match window** (`com.riotgames.LeagueofLegends.GameClient`) is in front. Lobby, browser, everything else: untouched.
 
 The full story, with every dead end, is in **[the devlog](docs/DEVLOG.md)**.

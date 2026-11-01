@@ -13,7 +13,7 @@ flowchart LR
     E --> F[v3<br/>skip macOS]
     F --> G[v3.1<br/>split fast taps]
     G --> H[v3.2<br/>track each finger]
-    H --> I[00:16<br/>ship it]
+    H --> I[00:16<br/>ship it] --> J[next day<br/>fix the mouse]
 ```
 
 ---
@@ -176,13 +176,39 @@ When a finger lifts and has a valid partner, that's a tap: click, mark both as u
 - It needs **Accessibility** permission, because it modifies and posts mouse events. Reading the trackpad needs nothing extra.
 - Rebuilding changes the binary's signature, and macOS then forgets the permission. Every rebuild means re-ticking the box.
 
+## 10 · The bug I shipped: "my mouse doesn't work"
+
+A few hours after "excellent", with the repo already up as private:
+
+> "I need you to turn the script off right now, my connected mouse doesn't work"
+
+Only inside the match. The cause was the duplicate filter from v3. Its rule was *"a right click with no fingers on the trackpad must be macOS's late tap-click, so drop it."* An external mouse fits that rule perfectly: no fingers on the trackpad. **Every right click from the mouse was being thrown away.** It was a rule that held for the only device I tested with and was wrong in general.
+
+The fix: lot no longer guesses from what's missing. It keeps a count of what it's **owed**.
+
+- Every tap lot sends adds one *owed* duplicate, valid for 1.5 s (macOS's late clicks arrived within ~1.1 s).
+- With nothing owed, **every right click passes through instantly**: mouse, physical click, anything.
+- With something owed, the mouse-down is held for 5 ms. If its mouse-up arrives inside that window (a duplicate's comes ~0.2 ms later), it's the duplicate and both get dropped. If not, it's a real click and it's re-posted.
+
+```mermaid
+flowchart TD
+    A[right mouse-down<br/>during a match] --> B{lot owes a duplicate?<br/>tap sent in the last 1.5 s}
+    B -- no --> P[pass through instantly<br/>mouse · physical click]
+    B -- yes --> C{mouse-up within 5 ms?}
+    C -- yes --> D[macOS duplicate → drop both]
+    C -- no --> E[real click → re-post<br/>5 ms late]
+```
+
+An external mouse only ever pays those 5 ms when you click it right after a trackpad tap.
+
 ## What I'd tell someone trying something similar
 
 1. **Measure before fixing.** A 30-line logger showed in two minutes what an hour of guessing wouldn't have.
 2. **Log in the real setting.** The overlapping-taps problem only appears when you tap the way you actually play.
 3. **"Movement" in a sensor isn't always movement.** Check what state the data is in before trusting it.
 4. **When the platform is the bottleneck, step around it,** but keep a door open for what it still does well (physical clicks).
+5. **Filter by what you know, not by what's missing.** "No fingers on the trackpad" didn't mean "late tap". It also meant "mouse". Keeping track of what you're owed beats guessing.
 
 ---
 
-*Built in one night with [Claude Code](https://claude.com/claude-code).*
+*Built in one night (plus one morning-after fix) with [Claude Code](https://claude.com/claude-code).*
